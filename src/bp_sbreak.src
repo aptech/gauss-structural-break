@@ -1,6 +1,6 @@
 @October 11, 2004 version@
 @Copyrigth, Pierre Perron (1998, 1999, 2004, 2009).@
-proc(0)=pbreak(bigt,y,z,q,m,h,eps1,robust,prewhit,hetomega,
+proc (0) = pbreak(bigt, y,z,q,m,h,eps1,robust,prewhit,hetomega,
 hetq,doglobal,dotest,dospflp1,doorder,dosequa,dorepart,estimbic,estimlwz,
 estimseq,estimrep,estimfix,fixb,x,p,eps,maxi,fixb,betaini,printd,hetdat,hetvar,fixn);
 local datevec,bigvec,global,i,supfl,ndat,maic,mbic,mlwz,ssrzero,nbreak;
@@ -30,7 +30,7 @@ Print "Output from the global optimization";
 Print "********************************************************";
 
 if p == 0;
-{global,datevec,bigvec}=dating(y,z,h,m,q,bigt);
+{ global, datevec, bigvec } = dating(y,z,h,m,q,bigt);
 else;
 print "This is a partial structural change model and the following";
 print "specifictaions were used:";
@@ -41,8 +41,8 @@ print "If so, at the following values: " betaini;
 print "The convergence criterion is: " eps;
 print "Whether (1) or not (0) the iterations are printed: " printd;
 print "--------------------------";
-{global,datevec,bigvec}=nldat(y,z,x,h,m,p,q,bigt,fixb,
-eps,maxi,betaini,printd);
+{ global, datevec, bigvec } = nldat(y, z, x, h, m, p, q, bigt, fixb,
+eps, maxi, betaini, printd);
 endif;
 
 i=1;

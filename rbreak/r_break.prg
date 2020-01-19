@@ -10,7 +10,7 @@ responsible for any consequences that could result from remaining errors.
 @
 
 new;
-format /ld 6,3;
+format /ld 6,3; 
 cls;
 
 @Main inputs to run the program@
