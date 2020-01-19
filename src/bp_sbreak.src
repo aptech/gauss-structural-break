@@ -1,6 +1,61 @@
 @October 11, 2004 version@
 @Copyrigth, Pierre Perron (1998, 1999, 2004, 2009).@
-proc (0) = pbreak(bigt, y,z,q,m,h,eps1,robust,prewhit,hetomega,
+proc(1) = sbreakControlCreate();
+ struct sbreakControl sbCtl;
+    
+    
+sbCtl.fixedBeta = 0;                     @set to 1 if use fixed initial values for beta@
+
+sbCtl.initialBeta = 0;                  @if fixb=1, load the initial value of beta.@
+
+sbCtl.maxIters = 50;                    @maximum number of iterations for the nonlinear
+                                        procedure to obtain global minimizers.@
+sbCtl.printOutput = 1;                  @set to 1 if want the output from the iterations
+                                        to be printed.@
+sbCtl.eps = 0.0001;                             @criterion for the convergence.@
+
+sbCtl.graphOn = 0;
+    
+sbCtl.robust = 0;
+    
+sbCtl.preWhiten = 0;
+
+sbCtl.heteroData = 0;
+
+sbCtl.heteroVariance = 0;
+
+sbCtl.heteroOmega = 0;
+
+sbCtl.heteroQ = 0;
+    
+    
+sbCtl.doglobal = 1;
+
+sbCtl.dotests = 1;
+
+sbCtl.dospflp1 = 1;
+    
+sbCtl.doorder = 1;
+
+sbCtl.doSequa = 1;
+    
+sbCtl.dorepart = 1;
+
+sbCtl.estimbic = 1;
+
+sbCtl.estimlwz = 0;
+
+sbCtl.estimseqa = 1;
+
+sbCtl.estimRepart = 1;
+    
+sbCtl.estimFix = 0;
+
+sbCtl.fixn = 0;
+    
+endp;
+    
+    proc (0) = pbreak(bigt, y,z,q,m,h,eps1,robust,prewhit,hetomega,
 hetq,doglobal,dotest,dospflp1,doorder,dosequa,dorepart,estimbic,estimlwz,
 estimseq,estimrep,estimfix,fixb,x,p,eps,maxi,fixb,betaini,printd,hetdat,hetvar,fixn);
 local datevec,bigvec,global,i,supfl,ndat,maic,mbic,mlwz,ssrzero,nbreak;
