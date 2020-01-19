@@ -1,0 +1,1462 @@
+/*Main procedure*/
+
+proc(0)=mainp(m,q,z,y,trm,robust,prewhit,hetvar,S,ss,S0,ss0,R,rr,R0,rr0,doestim,dotest,docv,Tstar,rep,bigt,forma,formb);
+local tc,tc2,cv,cv2;
+
+print "Outout from the restricted structural change procedures";
+print "***************************************************";
+Print " ";
+print "The specifications used are:";
+print " ";
+print "The number of breaks is: " m;
+print "The number of regressors is: " q;
+print "The trimming parameter is :" trm;
+print "The sample size is: " bigt; 
+if forma==1;
+ print "Form A for the restrictions are used. They are given by dela=S*teta+ss with:";
+ print "S = " S ;
+ print "and ss = " ss;
+endif;
+
+if formb==1;
+ print "Form B for the restrictions are used. They are given by R*delta=rr with:";
+ print "R = " R;
+ print "and rr = " rr;
+endif;
+
+if doestim==1;
+
+print "***********************************";
+Print "Output from the estimation procedure";
+print "__________________________________";
+Print " ";
+print "To construct the confidence intervals, the following options are used:";
+print " ";
+print "robust = " robust;
+print "prewhit = " prewhit;
+
+  if forma==1;
+     estco(m,q,z,y,trm,robust,prewhit,hetvar,S,ss); 
+  endif;
+  if formb==1;
+     estco2(m,q,z,y,trm,robust,prewhit,hetvar,R,rr);
+  endif; 
+else; 
+endif;
+
+if dotest==1;
+Print "Output from the Sup-F test procedure";
+print "__________________________________";
+Print " ";
+print "To construct the test, the following options are used:";
+print " ";
+print "robust = " robust;
+print "prewhit = " prewhit;
+
+
+
+  if forma==1;
+     tc=pftest(S,S0,y,z,m,q,bigt,robust,prewhit,hetvar); 
+  endif;
+  if formb==1;
+     tc2=pftest2(R,R0,y,z,m,q,bigt,robust,prewhit,hetvar);
+  endif; 
+else;
+endif;
+
+if docv==1;
+
+Print "Output from the simulation of the Sup-F test procedure";
+print "__________________________________";
+Print " ";
+print "The following options are used:";
+print " ";
+print "Number of replications: " rep;
+print "Tstar: " tstar;
+
+
+  if forma==1;
+     cv=rcv(Tstar,rep,q,m,S,ss,S0,ss0,trm);
+  endif;
+  if formb==1;
+     cv2=rcv2(Tstar,rep,q,m,R,rr,r0,rr0,trm);
+  endif; 
+else; 
+endif;
+
+endp;
+
+@******************************************************@
+/* This file mainly does three jobs:
+(1)Estimate the restricted structrual change model, return the breaks, coefficients, as well as the standard error of the coefficients
+   and the confidence interval for the breaks.
+(2)Do a restricted structural change test, and returns the value of the statistic
+(3)Simulate the critical values of the restricted structrual change test, returns 10%,5%,2.5%,1% critical values.
+For (1): estco(m,q,z,y,trm,robust,prewhit,hetvar,S,ss) and estco2(m,q,z,y,trm,robust,prewhit,hetvar,R,rr);
+For (2):pftest(S,S0,y,z,i,q,bigt,prewhit,robust,hetvar) and proc pftest2(R,r0,y,z,i,q,bigt,prewhit,robust,hetvar);
+For (3):rcv(Tstar,rep,q,m,S,ss,S0,ss0,trm) and rcv2(Tstar,rep,q,m,R,rr,R0,rr0,trm);
+*/
+
+
+
+@********************************************************************@
+/* This procedure estimates the breaks and the coefficients using the restrictions, based on the iterative method*/
+proc(2)=est(y,z,q,m,bigt,trm,S,SS);
+/* Input:
+        y: dependent variable
+        z: independent variable
+        q: number of regressors
+        bigt: sample size
+        S,ss: the restriction, taking the form delta=S*teta+ss, where teta is the vector of basic parameters of the model
+  Output:
+        dx: the break dates
+        delta: the coefficients
+*/ 
+local h,global,datevec,bigvec,br,tbar,i,t1,t2,zi,delta,bigvec2,tstar,diff,dx,zbar;
+    h=round(trm*bigt);
+    tstar=bigt;
+	{global,datevec,bigvec}=dating(y,z,h,m,q,bigt);@find the optimal partiton of  the sample without restrictions 
+                                                     on the coefficients, serves as the starting value of the iterative procedure@
+	br=datevec[.,m];@break dates@
+	tbar=datevec[1,m];
+	zbar= trimr(z,0,bigt-tbar)|zeros(bigt-tbar,q);@ creating the diagonal matrix of the regressors@
+	i=2;
+	do while i<=m;
+	       t1=datevec[i-1,m];
+	       t2=datevec[i,m];
+	       zi=zeros(t1,q)|trimr(z,t1,bigt-t2)|zeros(bigt-t2,q);
+	       zbar=zbar~zi;
+	       i=i+1;
+	endo;
+	t2=datevec[m,m];
+	zi=zeros(t2,q)|trimr(z,t2,0);
+	zbar=zbar~zi;
+   
+	                                             @estimate the coefficients using the restrictions on the coefficients@
+    delta=S*invpd(S'zbar'zbar*S)*S'zbar'(y-zbar*ss)+ss;
+	                                              @now  find optimal partitions under the estimated coefficients@
+	diff=0;
+	do while diff/=-1;
+	  
+	         bigvec2=ssr2(y,z,delta,q,m);
+	        {global,datevec}=dating2(bigvec2,h,m,tstar);
+	         if     datevec[.,m]==br;
+	                diff=-1;
+			        dx=br;
+	         else;
+                     br=datevec[.,m];
+		             diff=diff+1;
+          	         tbar=datevec[1,m];
+          	         zbar= trimr(z,0,tstar-tbar)|zeros(tstar-tbar,q);
+          	         i=2;
+          	         do while i<=m;
+          	                t1=datevec[i-1,m];
+          	                t2=datevec[i,m];
+          	                zi=zeros(t1,q)|trimr(z,t1,tstar-t2)|zeros(tstar-t2,q);
+          	                zbar=zbar~zi;
+          	                i=i+1;
+			   	     endo;
+				     t2=datevec[m,m];
+          	         zi=zeros(t2,q)|trimr(z,t2,0);
+          	         zbar=zbar~zi;
+          	         delta=S*invpd(S'zbar'zbar*S)*S'zbar'(y-zbar*ss)+ss;               
+             endif;
+	  endo;
+retp(dx,delta);
+endp;
+@********************************************************************@
+/* This procedure serves the same purose as above, while having restrictions formed as R*delta=rr*/
+proc(2)=est2(y,z,q,m,bigt,trm,R,rr);
+local h,global,datevec,bigvec,br,tbar,i,t1,t2,zi,delta,bigvec2,diff,dx,zbar,b,zz,e,fit,tstar;
+     tstar=bigt;
+     h=round(trm*bigt);
+	{global,datevec,bigvec}=dating(y,z,h,m,q,bigt);@find the optimal partiton of  the sample without restrictions 
+                                                    on the coefficients, serves as the starting value of the iterative procedure@
+	br=datevec[.,m];@break dates@
+	tbar=datevec[1,m];
+	zbar= trimr(z,0,Tstar-tbar)|zeros(Tstar-tbar,q);@ creating the diagonal matrix of the regressors@
+	i=2;
+	do while i<=m;
+	       t1=datevec[i-1,m];
+	       t2=datevec[i,m];
+	       zi=zeros(t1,q)|trimr(z,t1,bigt-t2)|zeros(bigt-t2,q);
+	       zbar=zbar~zi;
+	       i=i+1;
+	endo;
+	t2=datevec[m,m];
+	zi=zeros(t2,q)|trimr(z,t2,0);
+	zbar=zbar~zi;
+    {b,e,fit}= olsqr2(y,zbar);
+	@estimate the coefficients for this break structure@
+	zz=invpd(zbar'zbar);  
+    delta=b+zz*R'*invpd(R*zz*R')*(rr-R*b);
+	diff=0;
+	do while diff/=-1;
+	  
+	         bigvec2=ssr2(y,z,delta,q,m);
+	        {global,datevec}=dating2(bigvec2,h,m,tstar);
+	         if     datevec[.,m]==br;
+	                diff=-1;
+			        dx=br;
+	         else;
+                     br=datevec[.,m];
+		             diff=diff+1;
+          	         tbar=datevec[1,m];
+          	         zbar= trimr(z,0,tstar-tbar)|zeros(tstar-tbar,q);
+          	         i=2;
+          	         do while i<=m;
+          	                t1=datevec[i-1,m];
+          	                t2=datevec[i,m];
+          	                zi=zeros(t1,q)|trimr(z,t1,tstar-t2)|zeros(tstar-t2,q);
+          	                zbar=zbar~zi;
+          	                i=i+1;
+			   	     endo;
+				     t2=datevec[m,m];
+          	         zi=zeros(t2,q)|trimr(z,t2,0);
+          	         zbar=zbar~zi;
+          	         {b,e,fit}= olsqr2(y,zbar);
+	                 zz=invpd(zbar'zbar);  
+                      delta=b+zz*R'*invpd(R*zz*R')*(rr-R*b);             
+             endif;
+	  endo;
+retp(dx,delta);
+endp;
+@********************************************************************@
+/* Procedure that compute confidence intervals for the break dates based on the "shrinking shifts asymptotic framework." */ 
+proc interval(y,z,zbar,b,q,m,delta,robust,prewhit,hetomega);
+local nt,inter,res,qmat,omega,delv,a,bound,i;
+local dbdel,dd,bf,qmat1,phi1s,phi2s,eta,cvf,omega1,hetq;
+
+hetq=1;
+cvf=zeros(4,1);
+nt=rows(z);
+res=y-zbar*delta;
+bound=zeros(m,4);
+
+bf=zeros(m+2,1);
+bf[1,1]=0;
+bf[2:m+1,1]=b[1:m,1];
+bf[m+2,1]=nt;
+
+i=1;
+do while i <= m;
+delv=delta[i*q+1:(i+1)*q,1]-delta[(i-1)*q+1:i*q,1];
+if robust == 0;
+if hetq == 1;
+
+qmat=z[bf[i,1]+1:bf[i+1,1],.]'z[bf[i,1]+1:bf[i+1,1],.]/(bf[i+1,1]-bf[i,1]);
+qmat1=z[bf[i+1,1]+1:bf[i+2,1],.]'z[bf[i+1,1]+1:bf[i+2,1],.]
+/(bf[i+2,1]-bf[i+1,1]);
+
+else;
+
+qmat=z'z/nt;
+qmat1=qmat;
+endif;
+
+if hetomega == 1;
+
+phi1s=res[bf[i,1]+1:bf[i+1,1],1]'res[bf[i,1]+1:bf[i+1,1],1]
+/(bf[i+1,1]-bf[i,1]);
+phi2s=res[bf[i+1,1]+1:bf[i+2,1],1]'res[bf[i+1,1]+1:bf[i+2,1],1]
+/(bf[i+2,1]-bf[i+1,1]);
+
+else;
+
+phi1s=res'res/nt;
+phi2s=phi1s;
+
+endif;
+
+eta=delv'qmat1*delv/(delv'qmat*delv);
+
+cvf=cvg(eta,phi1s,phi2s);
+
+a=(delv'qmat*delv)/phi1s;
+
+bound[i,1]=b[i,1]-cvf[4,1]/a;
+bound[i,2]=b[i,1]-cvf[1,1]/a;
+bound[i,3]=b[i,1]-cvf[3,1]/a;
+bound[i,4]=b[i,1]-cvf[2,1]/a;
+
+else;
+
+if hetq == 1;
+
+qmat=z[bf[i,1]+1:bf[i+1,1],.]'z[bf[i,1]+1:bf[i+1,1],.]/(bf[i+1,1]-bf[i,1]);
+qmat1=z[bf[i+1,1]+1:bf[i+2,1],.]'z[bf[i+1,1]+1:bf[i+2,1],.]
+/(bf[i+2,1]-bf[i+1,1]);
+
+else;
+
+qmat=z'z/nt;
+qmat1=qmat;
+endif;
+
+if hetomega == 1;
+
+omega=correct(z[bf[i,1]+1:bf[i+1,1],.],res[bf[i,1]+1:bf[i+1,1],1],prewhit);
+omega1=correct(z[bf[i+1,1]+1:bf[i+2,1],.],res[bf[i+1,1]+1:bf[i+2,1],1],
+prewhit);
+
+else;
+
+omega=correct(z,res,prewhit);
+omega1=omega;
+
+endif;
+
+phi1s=delv'omega*delv/(delv'qmat*delv);
+phi2s=delv'omega1*delv/(delv'qmat1*delv);
+
+eta=delv'qmat1*delv/(delv'qmat*delv);
+
+cvf=cvg(eta,phi1s,phi2s);
+
+a=(delv'qmat*delv)^2/(delv'omega*delv);
+
+bound[i,1]=b[i,1]-cvf[4,1]/a;
+bound[i,2]=b[i,1]-cvf[1,1]/a;
+bound[i,3]=b[i,1]-cvf[3,1]/a;
+bound[i,4]=b[i,1]-cvf[2,1]/a;
+endif;
+i=i+1;
+endo;
+
+bound[.,1]=int(bound[.,1]); @changed,oct 14,2004@
+bound[.,2]=int(bound[.,2])+1;
+bound[.,3]=int(bound[.,3]);@changed@
+bound[.,4]=int(bound[.,4])+1;
+
+retp(bound);
+endp;
+
+@********************************************************************@
+/* This procedure computes the standard error of the estimated coefficients given the estimated break
+dates, also reports the confidence intervals. */
+proc(0)=estco(m,q,z,y,trm,robust,prewhit,hetvar,S,ss);
+local dum,nt,vdel,zbar,i,d,bound,reg,br,delta,bigt;
+
+if m == 0;
+
+print "There are no breaks in this model and estimation is skipped";
+else;
+
+@Estimation and printing@
+d=(m+1)*q;
+bigt=rows(y);
+{br,delta}=est(y,z,q,m,bigt,trm,S,SS);
+{zbar}=pzbar(z,m,br);
+ reg=zbar;
+{vdel}=pvdel(y,z,m,q,bigt,br,delta,prewhit,robust,hetvar); 
+vdel=S*invpd(S'zbar'zbar*S)*S'vdel*S*invpd(S'zbar'zbar*S)*S'; 
+print "--------------------------------------------------------------";
+print "The restricted estimates and corrected standard errors for the coefficients";
+print "--------------------------------------------------------------";
+i=1;
+do while i <= d;
+print "The restricted estimate for coefficient" i "is: " delta[i] " with corrected standard error: " sqrt(vdel[i,i]);
+@print "The corrected standard error for coefficient" i "is:" sqrt(vdel[i,i]);@
+i=i+1;
+endo;
+if robust == 0 and  hetvar == 0;
+print "In the case robust == 0,  and hetvar == 0, the 'corrected' are the same";
+print "as that of the printout except for a different small sample correction.";
+endif;
+
+@confidence interval for the break dates@
+
+bound=interval(y,z,zbar,br,q,m,delta,robust,prewhit,hetvar);
+print "--------------------------------------------------------------";
+print "The estimatees and the confidence intervals for the break dates";
+print "--------------------------------------------------------------";
+i=1;
+do while i <= m;
+print "The estimate of the" i "th break is: " br[i];
+print "The 95% C.I. for the" i "th break is: " bound[i,1] bound[i,2];
+print "The 90% C.I. for the" i "th break is: " bound[i,3] bound[i,4];
+i=i+1;
+endo;
+print "********************************************************";
+
+
+endif;
+endp;
+
+@********************************************************************@
+/* This procedure computes the standard error of the estimated coefficients given the estimated break
+dates, also reports the confidence intervals. */
+/* It serves the same purpose as the above procedure, while having the restrictions formed R*delta=rr*/
+proc(0)=estco2(m,q,z,y,trm,robust,prewhit,hetvar,R,rr);
+local dum,nt,vdel,zbar,i,bound,reg,br,delta,bigt,qq,phi,d,dd;
+
+if m == 0;
+
+print "There are no breaks in this model and estimation is skipped";
+else;
+
+@Construct the Z_bar matrix. The diagonal partition of Z at the
+estimated break dates.@
+
+
+
+@Estimation and printing@
+dd=(m+1)*q;
+bigt=rows(y);
+{br,delta}=est2(y,z,q,m,bigt,trm,R,rr);
+{zbar}=pzbar(z,m,br);
+ reg=zbar;
+{vdel}=pvdel(y,z,m,q,bigt,br,delta,prewhit,robust,hetvar);
+QQ=zbar'zbar; 
+phi=invpd(QQ)*vdel*invpd(QQ); 
+D=R*invpd(QQ)*R';
+vdel=phi-phi*R'inv(d)*R*inv(qq)-inv(qq)*R'Inv(d)*R*phi+inv(QQ)*R'inv(D)*R*phi*R'*inv(D)*R*inv(QQ); 
+print "--------------------------------------------------------------";
+print "The restricted estimates and corrected standard errors for the coefficients";
+print "--------------------------------------------------------------";
+i=1;
+do while i <= dd;
+print "The restricted estimate for coefficient" i "is: " delta[i] " with corrected standard error: " sqrt(vdel[i,i]);
+i=i+1;
+endo;
+if robust == 0 and  hetvar == 0;
+print "In the case robust == 0,  and hetvar == 0, the 'corrected' are the same";
+print "as that of the printout except for a different small sample correction.";
+endif;
+
+@confidence interval for the break dates@
+
+bound=interval(y,z,zbar,br,q,m,delta,robust,prewhit,hetvar);
+print "--------------------------------------------------------------";
+print "The estimates and the confidence intervals for the break dates";
+print "--------------------------------------------------------------";
+i=1;
+do while i <= m;
+print "The estimate of the" i "th break is: " br[i];
+print "The 95% C.I. for the" i "th break is: " bound[i,1] bound[i,2];
+print "The 90% C.I. for the" i "th break is: " bound[i,3] bound[i,4];
+i=i+1;
+endo;
+print "********************************************************";
+
+
+endif;
+endp;
+
+@********************************************************************@
+
+
+/* This procedure constructs the restricted structural change test*/
+proc pftest(S,S0,y,z,i,q,bigt,prewhit,robust,hetvar);
+local ftest,vdel,fstar,rsub,j,Hmat,zbar,dbdel,datevec,delta;
+/*
+  Input:
+      S: restrictions on the coefficients when allowing for breaks.
+      s0: restrictions on the coefficients not allowing for break.
+      y:dependent variable.
+      z: regressors.
+      i: number of breaks
+      q: number of regressors
+      bigt: sample size
+      prewhit: whether using pre-whitening
+      robust: whether auto-correlation is allowed
+      hetdat: whether the distribution of the regressors is allowed to vary across segments
+      hetvar: whether the variance of the errors is allowed to change
+  Output: The F test.
+  Note: The restrictions take the form delta=S*teta+ss
+*/
+{datevec,delta}=est(y,z,q,m,bigt,trm,S,ss); @ get the break dates and parameter estimates@
+@construct the H matrix@
+rsub=zeros(i,i+1);
+j=1;
+do while j <= i;
+rsub[j,j]=-1;
+rsub[j,j+1]=1;
+j=j+1;
+endo;
+Hmat=rsub.*.eye(q);
+
+{zbar}=pzbar(z,i,datevec);
+{vdel}=pvdel(y,z,m,q,bigt,datevec,delta,prewhit,robust,hetvar);
+vdel=S*inv(S'zbar'zbar*S)*S'vdel*S*inv(S'zbar'zbar*S)*S'; 
+fstar=delta'Hmat'pinv(Hmat*vdel*Hmat')*Hmat*delta;
+if S0==0;
+        ftest=1/bigt*fstar*(bigt-cols(S))/cols(S);
+else;
+        ftest=1/bigt*fstar*(bigt-cols(S))/(cols(S)-cols(S0));
+endif;
+print "--------------------------------------------------------------";
+print " The value of the  restricted structural change sup-F test is: " ftest;
+print "--------------------------------------------------------------";
+print "********************************************************";
+retp(ftest);
+endp;
+
+@********************************************************************@
+
+
+/* This procedure serves the same purpose, with restrictions being formulated as R*delta=rr*/
+proc pftest2(R,r0,y,z,i,q,bigt,prewhit,robust,hetvar);
+local ftest,vdel,fstar,rsub,j,Hmat,zbar,dbdel,qq,phi,d,datevec,delta,vdel2;
+/*
+  Input:
+      R: restrictions on the coefficients when allowing for breaks.
+      R0: restrictions on the coefficients not allowing for break.
+      y:dependent variable.
+      z: regressors.
+      i: number of breaks
+      q: number of regressors
+      bigt: sample size
+      prewhit: whether using pre-whitening
+      robust: whether auto-correlation is allowed
+      hetdat: whether the distribution of the regressors is allowed to vary across segments
+      hetvar: whether the variance of the errors is allowed to change
+  Output: The F test.
+  Note: The restrictions take the form delta=S*teta+ss
+*/
+
+{datevec,delta}=est2(y,z,q,m,bigt,trm,R,rr); @ get the break dates and parameter estimates@
+@construct the H matrix@
+
+rsub=zeros(i,i+1);
+j=1;
+do while j <= i;
+rsub[j,j]=-1;
+rsub[j,j+1]=1;
+j=j+1;
+endo;
+Hmat=rsub.*.eye(q);
+
+{zbar}=pzbar(z,i,datevec);
+{vdel}=pvdel(y,z,m,q,bigt,datevec,delta,prewhit,robust,hetvar);
+QQ=zbar'zbar; 
+phi=invpd(QQ)*vdel*invpd(QQ); 
+D=R*invpd(QQ)*R';
+vdel2=phi-phi*R'inv(d)*R*inv(qq)-inv(qq)*R'Inv(d)*R*phi+inv(QQ)*R'inv(D)*R*phi*R'*inv(D)*R*inv(QQ);  
+fstar=delta'Hmat'pinv(Hmat*vdel2*Hmat')*Hmat*delta; 
+if R0==0;
+        ftest=1/bigt*fstar*(bigt-cols(R)+rows(R))/(cols(R)-rows(r)-q);
+else;
+        ftest=1/bigt*fstar*(bigt-cols(R)+rows(R))/(cols(R)-rows(r)-cols(R0)+rows(r0));
+endif;
+print "--------------------------------------------------------------";
+print " The value of the  restricted structural change test is: " ftest;
+print "--------------------------------------------------------------";
+print "********************************************************";
+retp(ftest);
+endp;
+@********************************************************************@
+
+/*This procedure simulates the critical value of the restricted structural change test*/
+proc(1)=rcv(Tstar,rep,q,m,S,ss,S0,ss0,trm);
+/* The inputs 
+    Tstar: the sample size used to approximate the asymptotic value.
+    rep: number of replications to generate the quantiles.
+    q: the number of regressors in a single regime
+    m: the number of breaks under the alternative
+    S: the matrix standing for the restrictions posed on the model under the alternative.
+    ss: vector of constants.
+    S0: stands for the restrictions posed on the model under the null, it is implied by S.
+    ss0:vector of constants.
+    trm: the trimming parameter.
+The outputs: The quantitles correspond to 10%,5%,2.5%,1% significence level
+Note: The form of the restriction is delta=S*teta+ss, where teta is q demensional vector
+    standing for the basic parameters of the model
+*/
+local result,supff,ssrn,ite,y,reg,z,b,e,fit,h,global,datevec,bigvec,br,tbar,zbar,zi,i;
+local zz,delta,bigvec2,diff,t1,t2,su;
+
+supff=zeros(rep,1);                             @ store values of the simulated test statistic@
+ite=1;                                          @ controls the number of replications@
+do while ite<=rep;
+
+	y=rndn(Tstar,1);                            @generate the depend and independent variable as independent white noise@
+    y=y-meanc(y);
+	z=rndn(tstar,q);
+                                                @ estimate the model under the assumptions that no breaks happens@
+    if S0==0;
+        b=ss0;
+    else;
+	b=S0*invpd(S0'z'z*S0)*S0'z'(y-z*ss0)+ss0;
+    endif;
+	ssrn=y'y-(z*b)'(z*b);                       @store the SSR under no break,later used to construct the F test@
+	h=round(trm*Tstar);
+	{global,datevec,bigvec}=dating(y,z,h,m,q,Tstar);@find the optimal partiton of  the sample without restrictions 
+                                                     on the coefficients, serves as the starting value of the iterative procedure@
+	br=datevec[.,m];@break dates@
+	tbar=datevec[1,m];
+	zbar= trimr(z,0,Tstar-tbar)|zeros(Tstar-tbar,q);@ creating the diagonal matrix of the regressors@
+	i=2;
+	do while i<=m;
+	       t1=datevec[i-1,m];
+	       t2=datevec[i,m];
+	       zi=zeros(t1,q)|trimr(z,t1,Tstar-t2)|zeros(Tstar-t2,q);
+	       zbar=zbar~zi;
+	       i=i+1;
+	endo;
+	t2=datevec[m,m];
+	zi=zeros(t2,q)|trimr(z,t2,0);
+	zbar=zbar~zi;
+   
+	                                             @estimate the coefficients using the restrictions on the coefficients@
+    delta=S*invpd(S'zbar'zbar*S)*S'zbar'(y-zbar*ss)+ss;
+	                                              @now  find optimal partitions under the estimated coefficients@
+	diff=0;
+	do while diff/=-1;
+	  
+	         bigvec2=ssr2(y,z,delta,q,m);
+	        {global,datevec}=dating2(bigvec2,h,m,tstar);
+	         if     datevec[.,m]==br;
+	                diff=-1;
+			        su=y'y-(zbar*delta)'(zbar*delta);
+                    if s0==0;   
+                         supff[ite]=((ssrn-su)/(cols(S)))/(su/(rows(y)-cols(S)));
+                    else;
+				         supff[ite]=((ssrn-su)/(cols(S)-cols(S0)))/(su/(rows(y)-cols(S)));
+	                endif;         @ correct for the degree of freedom@
+	         else;
+                     br=datevec[.,m];
+		             diff=diff+1;
+          	         tbar=datevec[1,m];
+          	         zbar= trimr(z,0,tstar-tbar)|zeros(tstar-tbar,q);
+          	         i=2;
+          	         do while i<=m;
+          	                t1=datevec[i-1,m];
+          	                t2=datevec[i,m];
+          	                zi=zeros(t1,q)|trimr(z,t1,tstar-t2)|zeros(tstar-t2,q);
+          	                zbar=zbar~zi;
+          	                i=i+1;
+			   	     endo;
+				     t2=datevec[m,m];
+          	         zi=zeros(t2,q)|trimr(z,t2,0);
+          	         zbar=zbar~zi;
+          	         delta=S*invpd(S'zbar'zbar*S)*S'zbar'(y-zbar*ss)+ss;               
+             endif;
+	  endo;
+ite=ite+1;
+endo;
+supff=sortc(supff,1);
+print "--------------------------------------------------------------";
+print " The simulated quantiles of the restricted structrual change test are";
+print "--------------------------------------------------------------";
+print " 90%:   " supff[round(rep*0.9)];
+print " 95%:   " supff[round(rep*0.95)];
+print " 97.5%:" supff[round(rep*0.975)];
+print " 99%:   " supff[round(rep*0.99)];
+print "********************************************************";
+retp(supff[round(rep*0.9)]|supff[round(rep*0.95)]|supff[round(rep*0.975)]|supff[round(rep*0.99)]);@return the critical values@
+endp;
+
+
+@********************************************************************@
+/* This procedure serves the same purpose as the previous, however, it allows the restriction being formulated in another manner,
+   which is Rb=r. The user may choose whatever being convient
+*/
+proc(1)=rcv2(Tstar,rep,q,m,R,rr,R0,rr0,trm);
+/* The inputs 
+    Tstar: the sample size used to approximate the asymptotic value.
+    rep: number of replications to generate the quantiles.
+    q: the number of regressors in a single regime
+    m: the number of breaks under the alternative
+    R: the matrix standing for the restrictions posed on the model under the alternative.
+    rr: vector of constants.
+    R0: stands for the restrictions posed on the model under the null, it is implied by S.
+    rr0:vector of constants.
+    trm: the trimming parameter.
+The outputs: The quantitles correspond to 10%,5%,2.5%,1% significence level
+Note: The form of the restriction is Rb=r.
+*/
+local result,supff,ssrn,ite,y,reg,z,b,e,fit,h,global,datevec,bigvec,br,tbar,zbar,zi,i;
+local zz,delta,bigvec2,diff,t1,t2,su;
+
+supff=zeros(rep,1);                             @ store values of the simulated test statistic@
+ite=1;                                          @ controls the number of replications@
+do while ite<=rep;
+
+	y=rndn(Tstar,1);                            @generate the depend and independent variable as independent white noise@
+    y=y-meanc(y);
+	z=rndn(tstar,q);
+                                                @ estimate the model under the assumptions that no breaks happens@
+    if R0==0; @ in this case, it corresponds to a unrestricted model under the null of no break@
+        {b,e,fit}=olsqr2(y,z);    
+    else;
+        {b,e,fit}= olsqr2(y,z);
+        zz=invpd(z'z);
+        b=b+zz*R0'*invpd(R0*zz*R0')*(rr0-R0*b);
+    endif;
+	ssrn=y'y-(z*b)'(z*b);                       @store the SSR under no break,later used to construct the F test@
+	h=round(trm*Tstar);
+	{global,datevec,bigvec}=dating(y,z,h,m,q,Tstar);@find the optimal partiton of  the sample without restrictions 
+                                                     on the coefficients, serves as the starting value of the iterative procedure@
+	br=datevec[.,m];@break dates@
+	tbar=datevec[1,m];
+	zbar= trimr(z,0,Tstar-tbar)|zeros(Tstar-tbar,q);@ creating the diagonal matrix of the regressors@
+	i=2;
+	do while i<=m;
+	       t1=datevec[i-1,m];
+	       t2=datevec[i,m];
+	       zi=zeros(t1,q)|trimr(z,t1,Tstar-t2)|zeros(Tstar-t2,q);
+	       zbar=zbar~zi;
+	       i=i+1;
+	endo;
+	t2=datevec[m,m];
+	zi=zeros(t2,q)|trimr(z,t2,0);
+	zbar=zbar~zi;
+   
+	                                             @estimate the coefficients using the restrictions on the coefficients@
+    {b,e,fit}= olsqr2(y,zbar);
+     zz=invpd(zbar'zbar);  
+     delta=b+zz*R'*invpd(R*zz*R')*(rr-R*b);
+    
+	                                              @now  find optimal partitions under the estimated coefficients@
+	diff=0;
+	do while diff/=-1;
+	  
+	         bigvec2=ssr2(y,z,delta,q,m);
+	        {global,datevec}=dating2(bigvec2,h,m,tstar);
+	         if     datevec[.,m]==br;
+	                diff=-1;
+			        su=y'y-(zbar*delta)'(zbar*delta);
+                    if R0==0;    @ corresponding a unrestricted model@
+                         supff[ite]=((ssrn-su)/(cols(R)-rows(r)-q))/(su/(rows(y)-cols(R)+rows(R)));
+                    else;
+				         supff[ite]=((ssrn-su)/(cols(R)-rows(r)-cols(R0)+rows(r0)))/(su/(rows(y)-cols(R)+rows(R)));
+	                endif;         @ correct for the degree of freedom@
+	         else;
+                     br=datevec[.,m];
+		             diff=diff+1;
+          	         tbar=datevec[1,m];
+          	         zbar= trimr(z,0,tstar-tbar)|zeros(tstar-tbar,q);
+          	         i=2;
+          	         do while i<=m;
+          	                t1=datevec[i-1,m];
+          	                t2=datevec[i,m];
+          	                zi=zeros(t1,q)|trimr(z,t1,tstar-t2)|zeros(tstar-t2,q);
+          	                zbar=zbar~zi;
+          	                i=i+1;
+			   	     endo;
+				     t2=datevec[m,m];
+          	         zi=zeros(t2,q)|trimr(z,t2,0);
+          	         zbar=zbar~zi;
+                     {b,e,fit}= olsqr2(y,zbar);
+          	         zz=invpd(zbar'zbar);  
+          	         delta=b+zz*R'*invpd(R*zz*R')*(rr-R*b);               
+             endif;
+	  endo;
+ite=ite+1;
+endo;
+supff=sortc(supff,1);
+print "--------------------------------------------------------------";
+print " The simulated quantiles of the restricted structrual change test are";
+print "--------------------------------------------------------------";
+print " 90%:   " supff[round(rep*0.9)];
+print " 95%:   " supff[round(rep*0.95)];
+print " 97.5%:" supff[round(rep*0.975)];
+print " 99%:   " supff[round(rep*0.99)];
+print "********************************************************";
+retp(supff[round(rep*0.9)]|supff[round(rep*0.95)]|supff[round(rep*0.975)]|supff[round(rep*0.99)]);@return the critical values@
+endp;
+
+@*****************************************************************************@
+@*****************************************************************************@
+/* The followings are procedures that support the above procedures*/
+@*****************************************************************************@
+
+/* This procedure creates the matix storing the SSR for all the possible segments, under estimated coefficients b*/
+proc(1)=ssr2(y,z,b,q,m);
+/* input:
+    y:dependent variable.
+    z: regressors
+    b: estimated coefficients.
+    q: number of regressors.
+    m:number of breaks
+   output:
+    bigvec2: SSR for all the possible segments
+*/
+local i, bigvec2,bigt ;
+bigt=rows(y);
+bigvec2=zeros(bigt*(m+1),1);
+i=1;
+do while i<=m+1;
+          bigvec2[(i-1)*bigt+1:i*bigt]=(y-z*b[(i-1)*q+1:i*q])^2;    
+             i=i+1;
+        endo;
+retp(bigvec2);
+endp;
+
+/* the procedure is called only when number of breaks is one */
+/* obtain an optimal one break partitions for a segment that starts at 
+    date start and ends at date last,under the given coefficients. */
+proc(2)=parti2(start,b1,b2,last,bigvec2,bigt);
+local k,dvec,j,ssr1,ssr2,ssrmin,dx,ini,jj;
+/* Input: 
+        start: begining of the segment considered
+        b1: first possible break date
+        b2: last possible break date
+        last: end of segment considered
+Output: SSrmin: the minimized SSR under the optimal partitons
+        dx: the break dates
+NOte:    bigvec must have size 2*bigt
+ */        
+dvec=zeros(bigt,1);      
+j=b1;
+do while j<=b2;
+        ssr1=sumc(bigvec2[start:j]);
+        ssr2=sumc(bigvec2[1*bigt+j+1:1*bigt+last]);
+        dvec[j,1]=ssr1+ssr2; 
+        j=j+1;
+endo; 
+ssrmin=minc(dvec[b1:b2,1]);
+ dx=(b1-1)+minindc(dvec[b1:b2,1]);
+retp(ssrmin,dx);
+endp;
+
+@********************************************************************@
+/* This procedure is called when multiple breaks are present*/
+/* Calculates the break points that globally minimizes the SSR given the  estimated parameter values. */
+proc(2)=dating2(bigvec2,h,m,bigt);
+
+/* Input: 
+             bigvec2: the matrix storing the SSR for all the possible segments
+             h: mimunum number of observations in each segment
+             m: number of breaks.
+            bigt: number of obervations in the sample
+Output:
+            global: the globally minimized SSR
+            datevec: breaks
+*/
+local datevec,optdat,optssr,dvec,i,ssrmin,datx,j1,ib,jlast;
+local global,vecssr,jb,xx,bigvec;
+
+datevec=zeros(m,m);                                   @ up-tiangular matrix contains the estimated break 
+                                                               dates for break numbers from one to m@
+optdat=zeros(bigt,m); 
+                                                             
+optssr=zeros(bigt,m);                    
+                                                                    
+dvec=zeros(bigt,1);                        
+
+global=zeros(m,1);                            
+
+
+
+@
+Section that applies the dynamic programming algorithm to look for the
+optimal breaks
+The first case is when m = 1. Here the dynamic programming algorithm is not
+needed 
+@
+
+if m == 1;
+                {ssrmin,datx}=parti2(1,h,bigt-h,bigt, bigvec2,bigt);
+                datevec[1,1]=datx;
+                global[1,1]=ssrmin;
+else;
+
+                @ when m > 1, a dynamic programming algorithm is used.
+                 The first step is to obtain the optimal one break partitions for all
+                possible ending dates from 2h to T-mh+1.
+                The optimal dates are stored in a vector optdat.
+                The associated ssr are stored in a vector optssr.@
+                j1=2*h;                                                                              
+                do while j1 <= bigt; 
+                                                          @optimal one break partition@
+                        {ssrmin,datx}=parti2(1,h,j1-h,j1,bigvec2[1:2*bigt],bigt);           
+
+                            optssr[j1,1]=ssrmin;     
+                        optdat[j1,1]=datx;                                                          
+                        j1=j1+1;
+                endo;
+                global[1,1]=optssr[bigt,1];
+                datevec[1,1]=optdat[bigt,1];
+
+@
+When this is done the algorithm looks for optimal 2,3,... breaks
+partitions. The index used is ib.
+@
+
+                ib=2;
+                do while ib <= m;
+                        if ib == m;                 @if we have reached the highest number of breaks
+                                                        considered, only one segment is considered,
+                                                         which ends at the last date of the sample.@
+                                jlast=bigt;
+                                jb=ib*h;                      
+                                do while jb <=jlast-h;
+                                        dvec[jb,1] = optssr[jb,ib-1]+sumc(bigvec2[bigt*m+jb+1:bigt*(m+1)]);
+                                         jb=jb+1;
+                                endo;
+                                optssr[jlast,ib]=minc(dvec[ib*h:jlast-h,1]);
+                                optdat[jlast,ib]=(ib*h-1)+minindc(dvec[ib*h:jlast-h,1]);
+
+                        else;
+                                    @if we have not reached the highest number of breaks
+                                     considered, we need to loop over the last date of
+                                      the segment, between (ib+1)*h and T.@
+                                jlast=(ib+1)*h;
+
+                                do while jlast <= bigt;
+
+                                        jb=ib*h;                       /* date of the break */
+
+                                        do while jb <=jlast-h;
+                                                dvec[jb,1] = optssr[jb,ib-1]+sumc(bigvec2[bigt*ib+jb+1:bigt*ib+jlast]); @change@
+                                                jb=jb+1;
+                                        endo;
+                                        optssr[jlast,ib]=minc(dvec[ib*h:jlast-h,1]);
+                                        optdat[jlast,ib]=(ib*h-1)+minindc(dvec[ib*h:jlast-h,1]);
+                                        jlast=jlast+1;
+                                endo;
+                        endif;
+
+                        @At each time we loop the results with ib breaks are retrieved
+                            and printed@
+
+                        datevec[ib,ib]=optdat[bigt,ib];
+
+                        i=1;
+                        do while i <= ib-1;
+                                xx=ib-i;
+                                datevec[xx,ib]=optdat[datevec[xx+1,ib],xx];
+                                i=i+1;
+                        endo;
+                        global[ib,1]=optssr[bigt,ib];
+
+                ib=ib+1;
+                endo;
+
+    endif;                           /*closing the if for the case m >1*/
+
+retp(global,datevec);
+endp;
+
+/* This procedure calculates the break points that globally minimizes the SSR in a un-restricted model. */
+
+proc(3)=dating(y,z,h,m,q,bigt);
+
+/* Input: 
+             y: dependent variable.
+             z: independent variable.
+             h: mimunum number of observations in each segment
+             m: number of breaks.
+             q: number of regressors
+            bigt: number of obervations in the sample
+    Output: 
+            global: The minimized SSR under optimal partitons.
+            datevec: the estimated break dates.
+            bigvec:the big vector containing the SSR for all possible segments
+*/ 
+local datevec,optdat,optssr,dvec,i,ssrmin,datx,j1,ib,jlast;
+local global,vecssr,jb,xx,bigvec;
+
+datevec=zeros(m,m);                                      @ up-tiangular matrix contains the estimated break 
+                                                               dates for break numbers from one to m@
+optdat=zeros(bigt,m); 
+                                                              @row index corresponds to the ending dates, 
+                                                                column index corresponds to the number of breaks 
+                                                                 permitted before the ending date
+                                                                 the cell contains the optimal final break date@
+optssr=zeros(bigt,m);                    @ same as above, the cell contains the SSR 
+                                                                      corresponding to that break sturcture@
+dvec=zeros(bigt,1);                         @ the index is the date  after which we inserting
+                                                                       the break point.The cell
+                                                                      contains the corresponding SSR@ 
+global=zeros(m,1);                            @ Global SSR when i breaks are permitted@
+
+bigvec=zeros(bigt*(bigt+1)/2,1);        @ the vector that contains the SSR corresponding
+                                                                        to all the possible segments.
+                                                                     The SSr corresponding to the segment starting 
+                                                                     at J and lasting for span corresponds to the index
+                                                                      T(j-1)-(j-1)(j-2)/2+span@
+/* -------------------------Now creat the big vector of residuals------------------------------------*/
+/* according to different starting points*/
+i=1;
+do while i <= bigt-h+1;
+
+          {vecssr}=ssr(i,y,z,h,bigt);
+
+          bigvec[(i-1)*bigt+i-(i-1)*i/2:i*bigt-(i-1)*i/2,1]=vecssr[i:bigt,1];
+          i=i+1;
+endo;
+
+@
+Section that applies the dynamic programming algorithm to look for the
+optimal breaks
+The first case is when m = 1. Here the dynamic programming algorithm is not
+needed and one call to the parti(.) procedure is enough.
+@
+
+if m == 1;
+            {ssrmin,datx}=parti(1,h,bigt-h,bigt,bigvec,bigt);
+            datevec[1,1]=datx;
+            global[1,1]=ssrmin;
+else;
+
+@ when m > 1, a dynamic programming algorithm is used.
+  The first step is to obtain the optimal one break partitions for all
+  possible ending dates from 2h to T-mh+1.
+  The optimal dates are stored in a vector optdat.
+  The associated ssr are stored in a vector optssr.
+@
+            j1=2*h;                                                                              @First loop. Looking for the@
+            do while j1 <= bigt;                                                        @optimal one break partitions@
+                {ssrmin,datx}=parti(1,h,j1-h,j1,bigvec,bigt);           @for break dates between h and@
+                optssr[j1,1]=ssrmin;                                                     @T-h. j1 is the last date of the@
+                optdat[j1,1]=datx;                                                           @segments.@
+                j1=j1+1;
+            endo;
+            global[1,1]=optssr[bigt,1];
+            datevec[1,1]=optdat[bigt,1];
+
+@
+When this is done the algorithm looks for optimal 2,3,... breaks
+partitions. The index used is ib.
+@
+
+            ib=2;
+            do while ib <= m;
+                    if ib == m;                 @if we have reached the highest number of breaks
+                                          considered, only one segment is considered, that
+                                              which ends at the last date of the sample.@
+                                jlast=bigt;
+                                jb=ib*h;                       /* date of the break */
+                                do while jb <=jlast-h;
+                                        dvec[jb,1] = optssr[jb,ib-1]+bigvec[(jb+1)*bigt-jb*(jb+1)/2,1];
+                                                @optssr[jb,ib-1]: starting at 1,ending at jb, with ib-1 breaks inside@
+                                                @bigvec[(jb+1)*bigt-jb*(jb+1)/2,1]: starting at jb+1, till big T@
+                                        jb=jb+1;
+                                endo;
+                                optssr[jlast,ib]=minc(dvec[ib*h:jlast-h,1]);
+                                optdat[jlast,ib]=(ib*h-1)+minindc(dvec[ib*h:jlast-h,1]);
+
+                    else;
+                                                    @if we have not reached the highest number of breaks
+                                                        considered, we need to loop over the last date of
+                                                     the segment, between (ib+1)*h and T.@
+                                 jlast=(ib+1)*h;
+
+                                do while jlast <= bigt;
+
+                                             jb=ib*h;                       /* date of the break */
+
+                                        do while jb <=jlast-h;
+                                            dvec[jb,1] = optssr[jb,ib-1]+bigvec[jb*bigt-jb*(jb-1)/2+jlast-jb,1];
+                                            jb=jb+1;
+                                        endo;
+                                        optssr[jlast,ib]=minc(dvec[ib*h:jlast-h,1]);
+                                        optdat[jlast,ib]=(ib*h-1)+minindc(dvec[ib*h:jlast-h,1]);
+                                        jlast=jlast+1;
+                                endo;
+                   endif;
+
+@At each time we loop the results with ib breaks are retrieved
+and printed@
+
+                    datevec[ib,ib]=optdat[bigt,ib];
+
+                    i=1;
+                    do while i <= ib-1;
+                            xx=ib-i;
+                            datevec[xx,ib]=optdat[datevec[xx+1,ib],xx];
+                            i=i+1;
+                    endo;
+                    global[ib,1]=optssr[bigt,ib];
+
+                    ib=ib+1;
+            endo;
+
+endif;                           /*closing the if for the case m >1*/
+retp(global,datevec,bigvec);
+endp;
+
+@********************************************************************@
+/* This procedure computes recursive residuals from a data set that starts at date "start" and ends at date "last". */
+proc(1)=ssr(start,y,z,h,last);
+local vecssr,delta1,delta2,inv1,inv2,invz,res,v,f,r;
+/*  
+  Inputs:
+            start: starting entry of the sample used.
+            last: ending date of the last segment considered
+            y: dependent variable
+            z: matrix of regressors of dimension q
+            h: minimal length of a segment
+ Output:    vecssr:    a vector of sum of squared residuals (SSR) of length last-start+1
+                        (stored for convenience in a vector of length T).
+
+***Note: that the first h-1 elements have no meaning, usually is initialized as zero@
+*/
+
+/* initialize the vectors */
+vecssr=zeros(last,1);
+
+/* initialize the recursion with the first h data points */
+
+inv1=inv(z[start:start+h-1,.]'z[start:start+h-1,.]);
+delta1=inv1*(z[start:start+h-1,.]'y[start:start+h-1,1]);
+res=y[start:start+h-1,1]-z[start:start+h-1,.]*delta1;
+vecssr[start+h-1,1]=res'res;
+
+/* loop to construct the recursive residuals and update the SSR */
+
+r=start+h;
+do while r <= last;
+        v=y[r,1]-z[r,.]*delta1;
+        invz=inv1*z[r,.]';
+        f=1+z[r,.]*invz;
+        delta2=delta1+(invz*v)/f;
+        inv2=inv1-(invz*invz')/f;
+        inv1=inv2;
+        delta1=delta2;
+        vecssr[r,1]=vecssr[r-1,1]+v*v/f;
+        r=r+1;
+endo;
+retp(vecssr);
+endp;
+
+/* procedure to obtain an optimal one break partitions for a segment that starts at date start and ends at date last. */ 
+proc(2)=parti(start,b1,b2,last,bigvec,bigt);
+local k,dvec,j,ssrmin,dx,ini,jj;
+/* Input: 
+                 start: begining of the segment considered
+                 b1: first possible break date
+                  b2: last possible break date
+                  last: end of segment considered
+ Output:         SSrmin: minimized SSR
+                 dx: the break date
+*/
+dvec=zeros(bigt,1);                                      
+ini=(start-1)*bigt-(start-2)*(start-1)/2+1; @ the starting date of the  data@
+
+j=b1;
+do while j<=b2;
+        jj=j-start;
+        k=j*bigt-(j-1)*j/2+last-j;
+        dvec[j,1]=bigvec[ini+jj,1]+bigvec[k,1];
+                                                         @ the first term: the SSr corresponding to data from date start to j
+                                                           The second term: the ssr corresponding to data from (j+1)
+                                                            and lasts for last -j @
+        j=j+1;
+endo;
+ssrmin=minc(dvec[b1:b2,1]);
+dx=(b1-1)+minindc(dvec[b1:b2,1]);
+retp(ssrmin,dx);
+endp;
+
+@*****************************************************************************@
+ /* This produre constructs the Zbar'*Omiga*Zbar matrix*/
+
+proc pvdel(y,z,i,q,bigt,b,coeff,prewhit,robust,hetvar);
+local zbar,delv,vdel,hac,res,j,sig,sigmq,lambda,q22,reg,vd;
+local vv,ev,q21,q11,aaa,bbb,xbar,aa,bb,cc,mat,ff,gam,ie,w,wbar,ww,gg;
+
+@procedure that compute the covariance matrix of the estimates delta.@
+ev=ones(i+1,1);
+{zbar}=pzbar(z,i,b);@b is the date of breaks@
+res=y-zbar*coeff;
+reg=zbar;
+
+
+if robust == 0;
+@
+section on testing with no serial correlation in errors
+@
+
+    if  hetvar == 0;
+        sig=res'res/bigt;
+        vdel=sig*(reg'reg);
+     endif;
+     if  hetvar == 1;
+         sig=psigmq(res,b,q,i,bigt);
+          vdel=(sig.*.eye(q))*(reg'reg);
+      endif;
+
+else;           @robust=1@
+
+         if hetvar == 1;
+                 hac=zeros((i+1)*q,(i+1)*q);
+                 vdel=zeros((i+1)*q,(i+1)*q);
+                 hac[1:q,1:q]=b[1,1]*correct(z[1:b[1,1],.],res[1:b[1,1],1],prewhit);
+                 j=2;
+                    do while j <= i;
+                         hac[(j-1)*q+1:j*q,(j-1)*q+1:j*q]=(b[j,1]-b[j-1,1])*correct(z[b[j-1,1]+1:b[j,1],.],res[b[j-1,1]+1:b[j,1],1],prewhit);
+                         j=j+1;
+                    endo;
+                  hac[i*q+1:(i+1)*q,i*q+1:(i+1)*q]=(bigt-b[i,1])*correct(z[b[i,1]+1:bigt,.],res[b[i,1]+1:bigt,1],prewhit);
+                vdel=hac;
+        else;
+            hac=correct(z,res,prewhit);
+            lambda=plambda(b,i,bigt);
+            vdel=bigt*(lambda.*.hac);
+        endif;
+endif;
+retp(vdel);
+endp;
+@*****************************************************************************@
+/* @procedure to construct the diagonal partition of z with m break at dates b.@ */
+
+proc pzbar(zz,m,bb);
+local nt,q1,zb,i;
+nt=rows(zz);
+q1=cols(zz);
+
+zb=zeros(nt,(m+1)*q1);
+zb[1:bb[1,1],1:q1]=zz[1:bb[1,1],.];
+i=2;
+do while i <= m;
+zb[bb[i-1,1]+1:bb[i,1],(i-1)*q1+1:i*q1]=zz[bb[i-1,1]+1:bb[i,1],.];
+i=i+1;
+endo;
+zb[bb[m,1]+1:nt,m*q1+1:(m+1)*q1]=zz[bb[m,1]+1:nt,.];
+retp(zb);
+endp;
+@*****************************************************************************@
+proc correct(reg,res,prewhit);
+local jh,imat,d,nt,i,b,bmat,vstar,hac,vmat;
+@main procedures which activates the computation of robust standard
+errors.@
+
+d=cols(reg);
+nt=rows(reg);
+b=zeros(d,1);
+bmat=zeros(d,d);
+vstar=zeros(nt-1,d);
+vmat=zeros(nt,d);
+
+@First construct the matriz z_t*u_t.@
+
+i=1;
+do while i <= d;
+vmat[.,i]=reg[.,i].*res;
+i=i+1;
+endo;
+
+@Procedure that applies prewhitenning to the matrix vmat by filtering
+with a VAR(1). if prewhit=0, it is skipped.@
+
+
+if prewhit == 1;
+
+/* estimating the VAR(1) */
+i=1;
+do while  i <= d;
+b=olsqr(vmat[2:nt,i],vmat[1:nt-1,.]);
+bmat[.,i]=b;
+vstar[.,i]=vmat[2:nt,i]-vmat[1:nt-1,.]*b;
+i=i+1;
+endo;
+
+/* call the kernel on the residuals */
+
+jh=jhatpr(vstar);
+
+/* recolor */
+
+hac=inv(eye(d)-bmat)*jh*(inv(eye(d)-bmat))';
+
+else;
+hac=jhatpr(vmat);
+endif;
+retp(hac);
+endp;
+
+@********************************************************************@
+
+proc jhatpr(vmat);
+local d,nt,jhat,j,st;
+@Procedure to compute the long-run covariance matrix of vmat.@
+
+nt=rows(vmat);
+d=cols(vmat);
+jhat=zeros(d,d);
+
+/* calling the automatic bandwidth selection*/
+{st}=bandw(vmat);
+
+@lag 0 covariance@
+jhat=vmat'vmat;
+
+@forward sum@
+j=1;
+do while j <= nt-1;
+jhat=jhat+kern(j/st)*vmat[j+1:nt,.]'vmat[1:nt-j,.];
+j=j+1;
+endo;
+
+@bacward sum@
+j=1;
+do while j <= nt-1;
+jhat=jhat+kern(j/st)*vmat[1:nt-j,.]'vmat[j+1:nt,.];
+j=j+1;
+endo;
+
+@small sample correction@
+jhat=jhat/(nt-d);
+retp(jhat);
+endp;
+
+@********************************************************************@
+
+proc bandw(vhat);
+local nt,i,b,sig,a2,a2n,a2d,st,d;
+@procedure that compute the automatic bandwidth based on AR(1)
+approximation for each vector of the matrix vhat. Each are given
+equal weigths of 1.@
+
+nt=rows(vhat);
+d=cols(vhat);
+a2n=0;
+a2d=0;
+i=1;
+do while i <= d;
+b=olsqr(vhat[2:nt,i],vhat[1:nt-1,i]);
+sig=(vhat[2:nt,i]-b*vhat[1:nt-1,i])'(vhat[2:nt,i]-b*vhat[1:nt-1,i]);
+sig=sig/(nt-1);
+a2n=a2n+4*b*b*sig*sig/(1-b)^8;
+a2d=a2d+sig*sig/(1-b)^4;
+i=i+1;
+endo;
+a2=a2n/a2d;
+st=1.3221*(a2*nt)^.2;
+retp(st);
+endp;
+
+@********************************************************************@
+
+proc kern(x);
+local del,del1,ker;
+@procedure to evaluate the quadratic kernel at some value x.@
+
+del=6*pi*x/5;
+ker=3*(sin(del)/del-cos(del))/(del*del);
+retp(ker);
+endp;
+@********************************************************************@
+
+proc psigmq(res,b,q,i,nt);
+local sigmat,kk,sigmq;
+
+@procedure that computes a diagonal matrix of dimension i+1 with ith
+entry the estimate of the variance of the residuals for segment i.
+@
+
+sigmat=zeros(i+1,i+1);
+sigmat[1,1]=res[1:b[1,1],1]'res[1:b[1,1],1]/b[1,1];
+kk = 2;
+do while kk <= i;
+sigmat[kk,kk]=res[b[kk-1,1]+1:b[kk,1],1]'
+res[b[kk-1,1]+1:b[kk,1],1]/(b[kk,1]-b[kk-1,1]);
+kk=kk+1;
+endo;
+sigmat[i+1,i+1]=res[b[i,1]+1:nt,1]'res[b[i,1]+1:nt,1]/(nt-b[i,1]);
+retp(sigmat);
+endp;
+
+
+@********************************************************************@
+
+proc plambda(b,m,bigt);
+local lambda,k;
+
+@procedure that construct a diagonal matrix of dimension m+1 with ith
+entry (T_i - T_i-1)/T.@
+
+lambda=zeros(m+1,m+1);
+lambda[1,1]=b[1,1]/bigt;
+k=2;
+do while k <= m;
+lambda[k,k]=(b[k,1]-b[k-1,1])/bigt;
+k=k+1;
+endo;
+lambda[m+1,m+1]=(bigt-b[m,1])/bigt;
+retp(lambda);
+endp;
+
+@********************************************************************@
+
+proc(1)= cvg(eta,phi1s,phi2s);
+local a,gam,b,deld,alph,bet;
+local cct,isig,sig,upb,lwb,crit,xx,pval,cvec;
+
+cvec=zeros(4,1);
+a=phi1s/phi2s;
+gam=((phi2s/phi1s)+1)*eta/2;
+b=sqrt(phi1s*eta/phi2s);
+deld=sqrt(phi2s*eta/phi1s)+b/2;
+alph=a*(1+a)/2;
+bet=(1+2*a)/2;
+sig={0.025 0.05 0.95 0.975};
+
+isig=1;
+do while isig <= 4;
+
+upb=200.0;
+lwb=-200.0;
+crit=999999.0;
+cct=1;
+
+do while abs(crit) >= .000001;
+cct=cct+1;
+if cct > 100;
+print "the procedure to get critical values for the break dates has";
+print "reached the upper bound on the number of iterations. This may";
+print "be due to incorrect specifications of the upper or lower bound";
+print "in the procedure cvg. The resulting confidence interval for this";
+print "break date is incorrect.";
+retp(cvec);
+else;
+
+xx=lwb+(upb-lwb)/2;
+pval=funcg(xx,bet,alph,b,deld,gam);
+crit=pval-sig[isig];
+if crit <= 0;
+lwb=xx;
+else;
+upb=xx;
+endif;
+endif;
+endo;
+cvec[isig,1]=xx;
+
+isig=isig+1;
+endo;
+retp(cvec);
+endp;
+
+@*****************************************************************************@
+proc(1)=funcg(x,bet,alph,b,deld,gam);
+local aa,xb,g;
+
+if x <= 0;
+    xb=bet*sqrt(abs(x));
+
+    if abs(xb)<=30;
+
+        g=-sqrt(-x/(2*pi))*exp(x/8)
+        -(bet/alph)*exp(-alph*x)*cdfn(-bet*sqrt(abs(x)))
+        +((2*bet*bet/alph)-2-x/2)*cdfn(-sqrt(abs(x))/2);
+
+    else;
+
+        aa=ln(bet/alph)-alph*x-xb^2/2-ln(sqrt(2*pi))-ln(xb);
+        g=-sqrt(-x/(2*pi))*exp(x/8)-exp(aa)+((2*bet*bet/alph)-2-x/2)*cdfn(-sqrt(abs(x))/2);
+
+    endif;
+else;
+
+    xb=deld*sqrt(x);
+    if abs(xb)<=30;
+
+        g=1+(b/sqrt(2*pi))*sqrt(x)*exp(-b*b*x/8)
+        +(b*deld/gam)*exp(gam*x)*cdfn(-deld*sqrt(x))
+        +(2-b*b*x/2-2*deld*deld/gam)*cdfn(-b*sqrt(x)/2);
+    else;
+
+        aa=ln(b*deld/gam)+gam*x-xb^2/2-ln(sqrt(2*pi))-ln(xb);
+        g=1+(b/sqrt(2*pi))*sqrt(x)*exp(-b*b*x/8)
+        +exp(aa)
+        +(2-b*b*x/2-2*deld*deld/gam)*cdfn(-b*sqrt(x)/2);
+    endif;
+endif;
+retp(g);
+endp;
+@*****************************************************************************@
