@@ -1,0 +1,82 @@
+struct sbreakControl {
+	//Number of regressors subject to change
+	scalar q;
+	
+    //Number of time invariant regressors in x
+	scalar p;
+	
+	//Trimming value (percentage);
+	scalar trim;
+	
+    //Minimal length of segment (h > p+q)
+	scalar h;
+	
+	//USE WITH TIME INVARIANT REGRESSORS
+	//If initialBeta=={} call function to set initial values
+	matrix initialBeta;
+	
+    //Maximum number of iterations;
+	scalar maxIters;
+	
+    //Indicator to print iteration outputs;
+	scalar printOutput;
+	
+    //Convergence criterion
+	scalar eps;
+    
+    //Graphing options
+    scalar graphOn;
+    
+    //Enter startdate
+    scalar dtstart;
+    
+    //Enter frequency of data
+    scalar frequency;
+	
+	//ERROR TERM ASSUMPTIONS
+	//Indicator to allow for heterogeneity
+	//and autocorrelation in residuals (cannot
+	// be used with lagged dependent variables)
+	scalar robust;
+    
+	//Prewhitening indicator
+	scalar prewhit;
+	
+    //Allow for different moment matrices across 
+	//segments in construction of F-tests
+	scalar hetdat;
+	
+    //Allow for different variance of residuals
+	//across segments in construction of F-tests
+	scalar hetvar;
+    
+	// Used in construction of confidence intervals
+    // If hetomega = 0 LR covariance matrix of zu
+    // is assumed identical across segments
+    scalar hetomega;
+    
+    //Heterogeniety of long run convariance matrix
+	//across segments
+	scalar hetq;
+	
+	//DESIRED PROCEDURES
+	//Global minimizers
+	scalar doglobal;
+	//Construct sup F, UDmax, and WDmax tests
+	scalar dotest;
+	//Contruct sup tests under with null of 1 break
+	scalar dospflp1;
+	//Select number of breaks using information criteria
+	scalar doorder;
+	//Estimate breaks sequentially and estimate num breaks
+	scalar dosequa;
+	//Modify break dates using Bai (1995) repartitioning
+	scalar dorepart;
+	//METHOD TO SELCTION NUMBER OF BREAKS
+	scalar estimbic;
+	scalar estimlwz;
+	scalar estimseq;
+	scalar estimrep;
+	//If estimfix>0, indicates a fixed number of breaks to include
+	scalar estimfix;
+};
